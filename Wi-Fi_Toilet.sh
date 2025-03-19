@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# WiFi Adapter Full Reset Script
-# Resets all wireless adapters, properly handling monitor mode interfaces
-# and recreating base interfaces
+# Wi-Fi_Toilet - Flush your problems away
+# A script to fully reset all wireless adapters
 
 # Check if script is run as root
 if [ "$(id -u)" -ne 0 ]; then
@@ -165,32 +164,35 @@ done
 echo "------------------------------"
 echo "Checking for missing base interfaces..."
 
-# Get the list of all physical devices
-PHYS=$(iw list 2>/dev/null | grep -i "wiphy" | awk '{print $2}')
+# Get the list of all physical devices (more precise method)
+PHYS=$(iw dev | grep "phy#" | sed 's/.*phy#\([0-9]*\).*/\1/' | sort -u)
 
-for PHY in $PHYS; do
-    # Check if there's an interface for this PHY
-    IFACE_FOR_PHY=$(iw dev | grep -A 1 "phy#$PHY" | grep "Interface" | awk '{print $2}')
-    
-    # If no interface exists for this PHY, create one
-    if [ -z "$IFACE_FOR_PHY" ]; then
-        echo "No interface found for phy$PHY"
+if [ -z "$PHYS" ]; then
+    echo "No physical wireless devices found."
+else
+    for PHY in $PHYS; do
+        # Check if there's an interface for this PHY
+        IFACE_FOR_PHY=$(iw dev | grep -A 1 "phy#$PHY" | grep "Interface" | awk '{print $2}')
         
-        # Try to determine what the interface should be named
-        # This is a guess - might need adjustment based on your system
-        NEW_IFACE="wlan$PHY"
-        
-        echo "Creating interface $NEW_IFACE on phy$PHY..."
-        iw phy phy$PHY interface add $NEW_IFACE type managed
-        
-        if [ $? -eq 0 ]; then
-            echo "Successfully created $NEW_IFACE"
-            ip link set $NEW_IFACE up
-        else
-            echo "Failed to create interface for phy$PHY"
+        # If no interface exists for this PHY, create one
+        if [ -z "$IFACE_FOR_PHY" ]; then
+            echo "No interface found for phy$PHY"
+            
+            # Try to determine what the interface should be named
+            NEW_IFACE="wlan$PHY"
+            
+            echo "Creating interface $NEW_IFACE on phy$PHY..."
+            iw phy phy$PHY interface add $NEW_IFACE type managed
+            
+            if [ $? -eq 0 ]; then
+                echo "Successfully created $NEW_IFACE"
+                ip link set $NEW_IFACE up
+            else
+                echo "Failed to create interface for phy$PHY"
+            fi
         fi
-    fi
-done
+    done
+fi
 
 echo "------------------------------"
 echo "All wireless interfaces have been reset."
