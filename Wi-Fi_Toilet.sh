@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Wi-Fi_Toilet - Flush your problems away
-# A script to fully reset all wireless adapters
-
 # Check if script is run as root
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run as root. Try 'sudo $0'"
@@ -72,39 +69,8 @@ for IFACE in $WIRELESS_INTERFACES; do
             echo "Monitor interface already removed by airmon-ng"
         fi
         
-        # Check if base interface exists, if not, create it
-        if ! ip link show $BASE_IFACE &>/dev/null; then
-            echo "Base interface $BASE_IFACE not found, creating it..."
-            
-            # If we have the PHY number, use it to create the base interface
-            if [ ! -z "$PHY" ]; then
-                echo "Creating $BASE_IFACE on phy$PHY..."
-                iw phy phy$PHY interface add $BASE_IFACE type managed
-                
-                if [ $? -eq 0 ]; then
-                    echo "Successfully created $BASE_IFACE"
-                else
-                    echo "Failed to create $BASE_IFACE"
-                fi
-            else
-                echo "Cannot create base interface - PHY number is unknown"
-            fi
-        fi
-        
-        # Make sure base interface is up if it exists
-        if ip link show $BASE_IFACE &>/dev/null; then
-            echo "Bringing up base interface $BASE_IFACE..."
-            ip link set $BASE_IFACE up
-            ip link set $BASE_IFACE promisc off
-            
-            # Reset interface MAC if needed and if macchanger is available
-            if command -v macchanger &> /dev/null; then
-                echo "Resetting MAC address for $BASE_IFACE..."
-                macchanger -p $BASE_IFACE &>/dev/null
-            fi
-        else
-            echo "WARNING: Base interface $BASE_IFACE does not exist"
-        fi
+        # Simply note that the monitor interface has been removed
+        echo "Monitor interface $IFACE has been removed"
         
         # Skip the rest of this iteration as we've handled the monitor interface
         echo "Monitor interface $IFACE handled"
@@ -137,18 +103,6 @@ for IFACE in $WIRELESS_INTERFACES; do
     echo "Bringing interface up..."
     ip link set $IFACE up
     
-    # Restart networking service (works on most distributions)
-    if command -v systemctl &> /dev/null; then
-        echo "Restarting NetworkManager..."
-        systemctl restart NetworkManager.service &> /dev/null || \
-        systemctl restart network-manager.service &> /dev/null || \
-        systemctl restart networking.service &> /dev/null
-    elif command -v service &> /dev/null; then
-        echo "Restarting networking service..."
-        service network-manager restart &> /dev/null || \
-        service networking restart &> /dev/null
-    fi
-    
     # Only release DHCP lease without requesting a new one
     if command -v dhclient &> /dev/null; then
         echo "Releasing DHCP lease..."
@@ -160,40 +114,6 @@ for IFACE in $WIRELESS_INTERFACES; do
     echo "Reset complete for $IFACE"
 done
 
-# After processing all interfaces, check for any missing base interfaces
-echo "------------------------------"
-echo "Checking for missing base interfaces..."
-
-# Get the list of all physical devices (more precise method)
-PHYS=$(iw dev | grep "phy#" | sed 's/.*phy#\([0-9]*\).*/\1/' | sort -u)
-
-if [ -z "$PHYS" ]; then
-    echo "No physical wireless devices found."
-else
-    for PHY in $PHYS; do
-        # Check if there's an interface for this PHY
-        IFACE_FOR_PHY=$(iw dev | grep -A 1 "phy#$PHY" | grep "Interface" | awk '{print $2}')
-        
-        # If no interface exists for this PHY, create one
-        if [ -z "$IFACE_FOR_PHY" ]; then
-            echo "No interface found for phy$PHY"
-            
-            # Try to determine what the interface should be named
-            NEW_IFACE="wlan$PHY"
-            
-            echo "Creating interface $NEW_IFACE on phy$PHY..."
-            iw phy phy$PHY interface add $NEW_IFACE type managed
-            
-            if [ $? -eq 0 ]; then
-                echo "Successfully created $NEW_IFACE"
-                ip link set $NEW_IFACE up
-            else
-                echo "Failed to create interface for phy$PHY"
-            fi
-        fi
-    done
-fi
-
 echo "------------------------------"
 echo "All wireless interfaces have been reset."
 echo "Current network status:"
@@ -202,8 +122,5 @@ echo "Current network status:"
 CURRENT_INTERFACES=$(iw dev | grep Interface | awk '{print $2}')
 ip addr | grep -A 5 "$(echo "$CURRENT_INTERFACES" | sed 's/$/\\|/g' | tr -d '\n' | sed 's/\\|$//')"
 
-echo "------------------------------"
-echo "Physical devices and their interfaces:"
-iw dev
 
 exit 0
