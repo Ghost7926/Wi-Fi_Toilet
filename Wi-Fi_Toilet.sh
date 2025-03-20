@@ -1,16 +1,30 @@
 #!/bin/bash
 
+# Display ASCII art banner
+display_banner() {
+    cat << "EOF"
+     _
+    | |
+ ___| |
+(    .'
+ )  (    Wi-Fi_Toilet - by ghost
+EOF
+    echo ""
+}
+
 # Check if script is run as root
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run as root. Try 'sudo $0'"
     exit 1
 fi
 
+# Display the banner
+display_banner
+
 # Check for aircrack-ng suite availability
 HAS_AIRCRACK=0
 if command -v airmon-ng &> /dev/null; then
     HAS_AIRCRACK=1
-    echo "Aircrack-ng suite detected, will use it for monitor mode interfaces"
 fi
 
 # Find all wireless interfaces, including those with "mon" suffix
@@ -27,12 +41,46 @@ if [ -z "$WIRELESS_INTERFACES" ]; then
     exit 1
 fi
 
-echo "Found the following wireless interfaces:"
-echo "$WIRELESS_INTERFACES"
-echo "Starting reset process..."
+# Display interfaces with numbers
+echo "Available wireless interfaces:"
+echo "-----------------------------"
+IFS=$'\n'
+IFACE_ARRAY=($WIRELESS_INTERFACES)
+for i in "${!IFACE_ARRAY[@]}"; do
+    echo "[$i] ${IFACE_ARRAY[$i]}"
+done
+echo ""
 
-# Process each wireless interface
-for IFACE in $WIRELESS_INTERFACES; do
+# Ask which interfaces to reset
+echo "Enter the numbers of interfaces you want to reset (comma or space separated)"
+echo "or type 'All' to reset all interfaces"
+echo -n "> "
+read SELECTION
+
+# Process selection
+if [[ "$SELECTION" == "All" || "$SELECTION" == "all" || "$SELECTION" == "ALL" ]]; then
+    # Process all interfaces
+    SELECTED_INTERFACES=("${IFACE_ARRAY[@]}")
+    echo "Starting reset process for ALL interfaces..."
+else
+    # Convert selection to array, handling both comma and space separation
+    IFS=', ' read -r -a SELECTED_INDICES <<< "$SELECTION"
+    
+    # Create array of selected interfaces
+    SELECTED_INTERFACES=()
+    for IDX in "${SELECTED_INDICES[@]}"; do
+        if [[ "$IDX" =~ ^[0-9]+$ ]] && [ "$IDX" -lt "${#IFACE_ARRAY[@]}" ]; then
+            SELECTED_INTERFACES+=("${IFACE_ARRAY[$IDX]}")
+        else
+            echo "Invalid selection: $IDX - Skipping"
+        fi
+    done
+    
+    echo "Starting reset process for selected interfaces: ${SELECTED_INTERFACES[*]}"
+fi
+
+# Process each selected interface
+for IFACE in "${SELECTED_INTERFACES[@]}"; do
     echo "------------------------------"
     echo "Resetting interface: $IFACE"
     
@@ -40,6 +88,19 @@ for IFACE in $WIRELESS_INTERFACES; do
     if [[ "$IFACE" == *"mon" ]]; then
         echo "Detected monitor mode interface: $IFACE"
         BASE_IFACE=$(echo $IFACE | sed 's/mon$//')
+        
+        # Check if this "mon" interface is actually in managed mode
+        MODE=$(iwconfig $IFACE 2>/dev/null | grep -o "Mode:[^ ]*" | cut -d ":" -f2)
+        
+        if [ "$MODE" = "Managed" ]; then
+            echo "Interface $IFACE is in managed mode despite 'mon' suffix"
+            echo "Renaming to $BASE_IFACE..."
+            ip link set $IFACE down
+            ip link set $IFACE name $BASE_IFACE
+            ip link set $BASE_IFACE up
+            echo "Successfully renamed to $BASE_IFACE"
+            continue
+        fi
         
         echo "Base interface should be: $BASE_IFACE"
         
@@ -115,12 +176,11 @@ for IFACE in $WIRELESS_INTERFACES; do
 done
 
 echo "------------------------------"
-echo "All wireless interfaces have been reset."
+echo "Wi-Fi_Toilet flush complete."
 echo "Current network status:"
 
 # Get updated list of interfaces after all operations
 CURRENT_INTERFACES=$(iw dev | grep Interface | awk '{print $2}')
 ip addr | grep -A 5 "$(echo "$CURRENT_INTERFACES" | sed 's/$/\\|/g' | tr -d '\n' | sed 's/\\|$//')"
-
 
 exit 0
