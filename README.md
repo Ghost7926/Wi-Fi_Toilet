@@ -1,13 +1,5 @@
 # Wi-Fi_Toilet
 
-<pre>
-     _
-    | |
- ___| |
-(    .'
- )  (    Wi-Fi_Toilet - Flush your problems away
-</pre>
-
 A script to fully reset all wireless adapters on your system.
 
 ## Features
